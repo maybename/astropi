@@ -52,6 +52,20 @@ def find_matching_coordinates(keypoints_1, keypoints_2, matches):
     return coordinates_1, coordinates_2
 
 def calculate_mean_distance(coordinates_1, coordinates_2):
+    all_distances = 0
+    merged_coordinates = list(zip(coordinates_1, coordinates_2))
+    for coordinate in merged_coordinates:
+        x_difference = coordinate[0][0] - coordinate[1][0]
+        y_difference = coordinate[0][1] - coordinate[1][1]
+        distance = math.hypot(x_difference, y_difference)
+        all_distances = all_distances + distance
+    return all_distances / len(merged_coordinates)
+
+def calculate_speed_in_kmps(feature_distance, GSD, time_difference):
+    distance = feature_distance * GSD / 100000
+    speed = distance / time_difference
+    return speed
+
 image_1 = 'atlas_photo_012.jpg'
 image_2 = 'atlas_photo_013.jpg'
 
@@ -61,4 +75,6 @@ keypoints_1, keypoints_2, descriptors_1, descriptors_2 = calculate_features(imag
 matches = calculate_matches(descriptors_1, descriptors_2) # Match descriptors
 display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches) # Display matches
 coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
-print(coordinates_1[0], coordinates_2[0])
+average_feature_distance = calculate_mean_distance(coordinates_1, coordinates_2)
+speed = calculate_speed_in_kmps(average_feature_distance, 12648, time_difference)
+print(speed)
