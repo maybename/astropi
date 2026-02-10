@@ -1,5 +1,5 @@
-from astro_pi_orbit import ISS
 from skyfield.api import load
+from astro_pi_orbit import ISS
 
 def get_speed_approx() -> float:
     ts = load.timescale()

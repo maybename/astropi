@@ -67,6 +67,7 @@ def main() -> int:
     for a, b in pairs:
         try:
             output = run_exif(a, b)
+            print(a, b, output)
             print(f"EXIF result using: {a.name} and {b.name}")
             print(output)
 

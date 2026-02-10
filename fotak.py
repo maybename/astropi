@@ -36,7 +36,7 @@ def _next_index(prefix: str, directory: Path) -> int:
 def take_three_photos(
     prefix: str = "atlas_photo",
     directory: str | Path = ".",
-    interval_s: float = 35.0,
+    interval_s: float = 120.0,
 ) -> List[Path]:
     """
     Takes 3 photos using camerazero at t=0, t=interval_s, t=2*interval_s.
