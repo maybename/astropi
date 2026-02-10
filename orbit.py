@@ -1,22 +1,20 @@
+from astro_pi_orbit import ISS
 from skyfield.api import load
 
-# Load timescale
-ts = load.timescale()
-t = ts.now()
+def get_speed_approx() -> float:
+    ts = load.timescale()
+    t = ts.now()
 
-# Load ISS TLE data
-satellites = load.tle_file(
-    'https://celestrak.org/NORAD/elements/stations.txt'
-)
+    iss = ISS()
+    pos = iss.at(t)
 
-# Find ISS
-iss = next(s for s in satellites if 'ISS' in s.name)
+    # Speed (km/s)
+    speed = pos.speed().km_per_s
 
-# Get position at current time
-pos = iss.at(t)
+    print(f"ISS speed: {speed:.3f} km/s")
+    return speed
 
-# Get speed (km/s)
-speed_km_s = pos.speed().km_per_s
+def get_height() -> float:
+    iss = ISS()
+    return iss.coordinates().elevation.m
 
-
-print(f"ISS speed: {speed_km_s:.2f} km/s")
