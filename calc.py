@@ -21,8 +21,8 @@ def _calc_dist_from_mid(pixel: Position, height: float):
     p_x = pixel[0] - CAM_RESSOLUTION[0]/2
     p_y = pixel[1] - CAM_RESSOLUTION[1]/2
 
-    beta_x = math.atan(p_x*GSD_x)
-    beta_y = math.atan(p_y*GSD_y)
+    beta_x = math.atan(p_x*GSD_x/height)
+    beta_y = math.atan(p_y*GSD_y/height)
     
     alpha_x = math.asin(math.sin(beta_x)*(1+height/EARTH_RADIUS))
     alpha_y = math.asin(math.sin(beta_y)*(1+height/EARTH_RADIUS))
@@ -33,12 +33,12 @@ def calc_dist(pos1: Position, pos2: Position, height: float):
     x1, y1 = _calc_dist_from_mid(pos1, height)
     x2, y2 = _calc_dist_from_mid(pos2, height)
     
-    return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * math.pi * EARTH_RADIUS
+    return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * EARTH_RADIUS
 
 def minimum_pixel_diff(time_diff: float):
     height = get_height()
     gsd = get_GSD(height)
-    dist = math.sqrt(MIN_SPEED)/time_diff
+    dist = math.sqrt(MIN_SPEED)/2/time_diff
     return (dist*gsd[0], dist*gsd[1])
 
 def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
@@ -50,4 +50,3 @@ def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
 
 if __name__ == "__main__":
     print(minimum_pixel_diff(60))
-    
