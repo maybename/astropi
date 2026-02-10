@@ -8,6 +8,8 @@ import argparse
 from pathlib import Path
 from statistics import median
 from typing import List, Tuple
+import calc
+
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
 
@@ -132,7 +134,9 @@ def run(image_1: str, image_2: str, gsd_cm_per_px: float = 12648.0, nfeatures: i
         save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, save_matches)
 
     coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
-    average_feature_distance, michaluv_debilni_tuple = calculate_median_distance(coordinates_1, coordinates_2)
+    average_feature_distance, (pos1, pos2) = calculate_median_distance(coordinates_1, coordinates_2)
+
+    print(calc.calc_speed(pos1, pos2, time_difference))
 
     return calculate_speed_in_kmps(average_feature_distance, gsd_cm_per_px, time_difference), 
 

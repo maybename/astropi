@@ -1,9 +1,9 @@
 import math
-
+from orbit import get_height
 # set it correctly
-CAM_ANGLE_X = 56
-CAM_ANGLE_Y = 60
-CAM_RATIO = (1920, 1080)
+CAM_ANGLE_X = 56        /180*math.pi
+CAM_ANGLE_Y = 60        /180*math.pi
+CAM_RATIO = (4056, 3040)
 EARTH_RADIUS = 6378 # km
 
 Position = tuple[float, float]
@@ -27,3 +27,10 @@ def calc_dist(pos1: Position, pos2: Position, height: float):
     x2, y2 = _calc_dist_from_mid(pos2, height)
     
     return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * math.pi * EARTH_RADIUS
+
+def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
+    height = get_height()
+    s = calc_dist(point1, point2, height)
+    speed = s/time_diff
+    print(speed)
+    return speed
