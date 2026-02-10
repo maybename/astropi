@@ -1,21 +1,28 @@
 import math
 from orbit import get_height
 # set it correctly
-CAM_ANGLE_X = 56        /180*math.pi
-CAM_ANGLE_Y = 60        /180*math.pi
-CAM_RATIO = (4056, 3040)
-EARTH_RADIUS = 6378 # km
+CAM_RESSOLUTION = (4056, 3040)
+SENSOR_DIM = (0.006287, 0.004712)
+EARTH_RADIUS = 6378000 # m
+FOCUS_LENGTH = 0.005 # m
+MIN_SPEED = 5000    # m/s
 
 Position = tuple[float, float]
 
+def get_GSD(height: float) -> tuple[float, float]:
+    return height*SENSOR_DIM[0]/CAM_RESSOLUTION[0]/FOCUS_LENGTH, height*SENSOR_DIM[1]/CAM_RESSOLUTION[1]/FOCUS_LENGTH
+
+
+
 def _calc_dist_from_mid(pixel: Position, height: float):
-    # height: float      - height in m
-    height = height / 1000
-    p_x = pixel[0] - CAM_RATIO[0] if pixel[0] > CAM_RATIO[0] else CAM_RATIO[0] - pixel[0]
-    p_y = pixel[1] - CAM_RATIO[1] if pixel[1] > CAM_RATIO[1] else CAM_RATIO[1] - pixel[1]
-    
-    beta_x = math.sin(math.asin(CAM_ANGLE_X/2)/CAM_RATIO[0]*2*p_x)
-    beta_y = math.sin(math.asin(CAM_ANGLE_Y/2)/CAM_RATIO[1]*2*p_y)
+    # height: float     - height in m
+    GSD_x, GSD_y = get_GSD(height)
+
+    p_x = pixel[0] - CAM_RESSOLUTION[0]/2
+    p_y = pixel[1] - CAM_RESSOLUTION[1]/2
+
+    beta_x = math.atan(p_x*GSD_x)
+    beta_y = math.atan(p_y*GSD_y)
     
     alpha_x = math.asin(math.sin(beta_x)*(1+height/EARTH_RADIUS))
     alpha_y = math.asin(math.sin(beta_y)*(1+height/EARTH_RADIUS))
@@ -28,9 +35,19 @@ def calc_dist(pos1: Position, pos2: Position, height: float):
     
     return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * math.pi * EARTH_RADIUS
 
+def minimum_pixel_diff(time_diff: float):
+    height = get_height()
+    gsd = get_GSD(height)
+    dist = math.sqrt(MIN_SPEED)/time_diff
+    return (dist*gsd[0], dist*gsd[1])
+
 def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
     height = get_height()
-    s = calc_dist(point1, point2, height)
+    s = calc_dist(point1, point2, height)/1000
     speed = s/time_diff
     print(speed)
     return speed
+
+if __name__ == "__main__":
+    print(minimum_pixel_diff(60))
+    
