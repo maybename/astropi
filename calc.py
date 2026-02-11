@@ -29,6 +29,7 @@ def calc_dist(pos1: Position, pos2: Position, height: float):
     return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * math.pi * EARTH_RADIUS
 
 def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
+    print(point1, point2,time_diff)
     height = get_height()
     s = calc_dist(point1, point2, height)
     speed = s/time_diff
