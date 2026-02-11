@@ -14,7 +14,7 @@ def get_GSD(height: float) -> tuple[float, float]:
 
 
 
-def _calc_dist_from_mid(pixel: Position, height: float):
+def _calc_angle_from_mid(pixel: Position, height: float):
     # height: float     - height in m
     GSD_x, GSD_y = get_GSD(height)
 
@@ -30,8 +30,8 @@ def _calc_dist_from_mid(pixel: Position, height: float):
     return alpha_x, alpha_y
 
 def calc_dist(pos1: Position, pos2: Position, height: float):
-    x1, y1 = _calc_dist_from_mid(pos1, height)
-    x2, y2 = _calc_dist_from_mid(pos2, height)
+    x1, y1 = _calc_angle_from_mid(pos1, height)
+    x2, y2 = _calc_angle_from_mid(pos2, height)
     
     return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * EARTH_RADIUS
 
