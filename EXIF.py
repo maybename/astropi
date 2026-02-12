@@ -9,6 +9,7 @@ from pathlib import Path
 from statistics import median
 from typing import List, Tuple, Optional, Literal
 import calc
+from config import get_gsd_cm_per_px
 
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
@@ -131,7 +132,11 @@ def save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches
     cv2.imwrite(out_path, match_img)
 
 
-def run(image_1: str, image_2: str, gsd_cm_per_px: float = 12648.0, nfeatures: int = 1000, save_matches: str | None = None) -> float:
+def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
+        nfeatures: int = 1000, save_matches: str | None = None):
+
+    if gsd_cm_per_px is None:
+        gsd_cm_per_px = get_gsd_cm_per_px()
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
         raise ValueError("Time difference is zero or negative (EXIF timestamps wrong?).")

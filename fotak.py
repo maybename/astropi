@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from typing import List
+from config import INTERVAL_S
 
 try:
     # This is what you said you're using
@@ -33,11 +34,15 @@ def _next_index(prefix: str, directory: Path) -> int:
     return max_idx + 1
 
 
+# fotak.py
+from config import INTERVAL_S
+
 def take_three_photos(
     prefix: str = "atlas_photo",
     directory: str | Path = ".",
-    interval_s: float = 35.0,
+    interval_s: float = INTERVAL_S,
 ) -> List[Path]:
+
     """
     Takes 3 photos using camerazero at t=0, t=interval_s, t=2*interval_s.
 

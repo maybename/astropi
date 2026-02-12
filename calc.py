@@ -1,5 +1,6 @@
 import math
 from orbit import get_height
+from config import INTERVAL_S
 # set it correctly
 CAM_RESSOLUTION = (4056, 3040)
 SENSOR_DIM = (0.006287, 0.004712)

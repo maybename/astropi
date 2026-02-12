@@ -2,13 +2,14 @@ from picamzero import Camera
 from pathlib import Path
 import time, math
 import EXIF  # EXIF.py -> module name EXIF
+from config import INTERVAL_S
 
 from fotak import take_photo
 from orbit import get_speed_approx
 
 TOLERANCE = 1 # in km/s
 RUNTIME = 10*60     # 10 Minutes, in second
-INTERVAL = 10       # in seconds
+INTERVAL = INTERVAL_S     # in seconds
 def run_exif(photo_a: Path, photo_b: Path):
     """
     Try module-style first; if that doesn't work, fall back to script-style.
