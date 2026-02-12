@@ -124,7 +124,7 @@ def calculate_median_distance(
 
 def calculate_speed_in_kmps(feature_distance_px: float, gsd_cm_per_px: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
-    distance_km = feature_distance_px * gsd_cm_per_px / 100000.0
+    distance_km = feature_distance_px * gsdnapix/ 100000.0
     return distance_km / time_difference_s
 
 
@@ -136,8 +136,8 @@ def save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches
 def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
         nfeatures: int = 1000, save_matches: str | None = None):
 
-    if gsd_cm_per_px is None:
-        gsd_cm_per_px = get_gsdnapix()
+    if gsdnapix is None:
+        gsdnapix= get_gsdnapix()
 
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
