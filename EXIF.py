@@ -80,86 +80,54 @@ def calculate_median_distance(
     coordinates_2: List[Point],
     *,
     time_seconds: float = 35.0,
-    gsd_cm_per_pixel: float = 12648.0,   # centimeters / pixel
+    gsd_cm_per_pixel: float = 12648.0,  # centimeters / pixel
     min_speed_kmh: float = 6.0,
     max_speed_kmh: float = 9.0,
-    on_empty: Literal["raise", "fallback_unfiltered"] = "fallback_unfiltered",
-) -> Tuple[float, Pair]:
+) -> Optional[Tuple[float, Pair]]:
     """
-    Filters out point-pairs whose implied ground speed is outside
-    [min_speed_kmh, max_speed_kmh]. GSD is centimeters/pixel.
-
     Returns:
       (median_ground_distance_m, ((x1, y1), (x2, y2)))
-    where the pair returned is the one whose *ground distance* is the median
-    (lower median for even count).
+    using ONLY pairs whose implied speed is within [min_speed_kmh, max_speed_kmh].
 
-    If filtering removes everything:
-      - on_empty="fallback_unfiltered": computes the median on all pairs instead
-      - on_empty="raise": raises ValueError with debug info
+    If no pairs remain after filtering, returns None (does NOT raise).
     """
     if not coordinates_1 or not coordinates_2:
-        raise ValueError("No coordinates to process (no matches).")
+        return None
 
     n = min(len(coordinates_1), len(coordinates_2))
     if n == 0:
-        raise ValueError("No coordinate pairs to process.")
+        return None
 
-    if time_seconds <= 0:
-        raise ValueError("time_seconds must be > 0.")
-    if gsd_cm_per_pixel <= 0:
-        raise ValueError("gsd_cm_per_pixel must be > 0.")
-    if min_speed_kmh <= 0 or max_speed_kmh <= 0 or min_speed_kmh > max_speed_kmh:
-        raise ValueError("Invalid speed bounds.")
+    if time_seconds <= 0 or gsd_cm_per_pixel <= 0:
+        return None
 
-    gsd_m_per_pixel = gsd_cm_per_pixel / 100.0
+    gsd_m_per_px = gsd_cm_per_pixel / 100.0
 
-    # Precompute what pixel displacement range your speed bounds imply (useful for debugging)
-    min_dist_m = (min_speed_kmh * 1000.0) * (time_seconds / 3600.0)
-    max_dist_m = (max_speed_kmh * 1000.0) * (time_seconds / 3600.0)
-    expected_min_px = min_dist_m / gsd_m_per_pixel
-    expected_max_px = max_dist_m / gsd_m_per_pixel
-
-    all_pairs: List[Tuple[float, Pair]] = []
-    kept_pairs: List[Tuple[float, Pair]] = []
-
+    # Keep only valid-speed pairs
+    valid: List[Tuple[float, Pair]] = []
     for (x1, y1), (x2, y2) in zip(coordinates_1[:n], coordinates_2[:n]):
         d_px = math.hypot(x1 - x2, y1 - y2)
-        d_m = d_px * gsd_m_per_pixel
+        d_m = d_px * gsd_m_per_px
 
         speed_kmh = (d_m / 1000.0) / (time_seconds / 3600.0)
 
-        pair = ((x1, y1), (x2, y2))
-        all_pairs.append((d_m, pair))
-
         if min_speed_kmh <= speed_kmh <= max_speed_kmh:
-            kept_pairs.append((d_m, pair))
+            valid.append((d_m, ((x1, y1), (x2, y2))))
 
-    chosen = kept_pairs
-    if not chosen:
-        msg = (
-            f"No coordinate pairs remain after filtering by speed "
-            f"[{min_speed_kmh}, {max_speed_kmh}] km/h.\n"
-            f"Given time_seconds={time_seconds} and gsd_cm_per_pixel={gsd_cm_per_pixel} "
-            f"({gsd_m_per_pixel:.3f} m/px), that speed range implies a pixel displacement of "
-            f"~[{expected_min_px:.2f}, {expected_max_px:.2f}] px.\n"
-            f"Either widen your speed range, fix units (GSD or time), or set on_empty='fallback_unfiltered'."
-        )
-        if on_empty == "raise":
-            raise ValueError(msg)
-        # fallback
-        chosen = all_pairs
+    if not valid:
+        return None
 
-    chosen.sort(key=lambda t: t[0])
-    distances_m = [d for d, _ in chosen]
-    med_dist_m = median(distances_m)
+    # Sort by distance so we can pick the median-distance pair
+    valid.sort(key=lambda t: t[0])
 
-    m = len(chosen)
+    distances = [d for d, _ in valid]
+    med_dist = median(distances)
+
+    # choose the pair corresponding to the median (lower median for even count)
+    m = len(valid)
     med_idx = m // 2 if (m % 2 == 1) else (m // 2 - 1)
-    median_pair = chosen[med_idx][1]
 
-    return med_dist_m, median_pair
-
+    return med_dist, valid[med_idx][1]
 
 def calculate_speed_in_kmps(feature_distance_px: float, gsd_cm_per_px: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
