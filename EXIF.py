@@ -84,13 +84,6 @@ def calculate_median_distance(
     min_speed_kmh: float = 6.0,
     max_speed_kmh: float = 9.0,
 ) -> Optional[Tuple[float, Pair]]:
-    """
-    Returns:
-      (median_ground_distance_m, ((x1, y1), (x2, y2)))
-    using ONLY pairs whose implied speed is within [min_speed_kmh, max_speed_kmh].
-
-    If no pairs remain after filtering, returns None (does NOT raise).
-    """
     if not coordinates_1 or not coordinates_2:
         return None
 
@@ -102,8 +95,6 @@ def calculate_median_distance(
         return None
 
     gsd_m_per_px = gsd_cm_per_pixel / 100.0
-
-    # Keep only valid-speed pairs
     valid: List[Tuple[float, Pair]] = []
     for (x1, y1), (x2, y2) in zip(coordinates_1[:n], coordinates_2[:n]):
         d_px = math.hypot(x1 - x2, y1 - y2)
