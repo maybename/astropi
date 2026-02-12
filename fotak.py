@@ -77,6 +77,32 @@ def take_three_photos(
 
     return paths
 
+def take_photo(
+    prefix: str = "atlas_photo",
+    directory: str | Path = ".",
+    camera = None
+) -> Path:
+    """
+    Takes 3 photos using camerazero at t=0, t=interval_s, t=2*interval_s.
+
+    Returns: list of Path objects for the saved images in capture order.
+    """
+
+    if camera is None:
+        camera = Camera()
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    start_idx = _next_index(prefix, directory)
+
+    filename = f"{prefix}_{start_idx + time.time():.03f}.jpg"
+    path = directory / filename
+
+    # camerazero usually provides .take_photo("file.jpg") or similar
+    camera.take_photo(str(path))
+
+    return path
 
 if __name__ == "__main__":
     photos = take_three_photos(prefix="atlas_photo", directory=".", interval_s=35.0)
