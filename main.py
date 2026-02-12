@@ -56,8 +56,9 @@ def main() -> int:
                 f.write(f"{sum(speeds)/len(speeds):.03f} km/s")
                 print(f"{sum(speeds)/len(speeds)} ± {get_stan_dev(speeds):.02f} km/s")
         
-        while timer_start + INTERVAL < time.time():
+        while time.time() < timer_start + INTERVAL:
             time.sleep(0.3)
+
         
             
             

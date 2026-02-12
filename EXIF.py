@@ -9,7 +9,7 @@ from pathlib import Path
 from statistics import median
 from typing import List, Tuple, Optional, Literal
 import calc
-from config import get_gsd_cm_per_px
+from config import get_gsdnapix
 
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
@@ -76,50 +76,51 @@ Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
 
 
+from statistics import median
+from typing import List, Tuple, Optional
+
+Point = Tuple[float, float]
+Pair = Tuple[Point, Point]
+
 def calculate_median_distance(
     coordinates_1: List[Point],
     coordinates_2: List[Point],
     *,
-    time_seconds: float = 35.0,
-    gsd_cm_per_pixel: float = 12648.0,  # centimeters / pixel
-    min_speed_kmh: float = 6.0,
-    max_speed_kmh: float = 9.0,
+    time_seconds: float,
+    gsd_cm_per_pixel: float,
+    min_speed_kmps: float = 6.0,
+    max_speed_kmps: float = 9.0,
 ) -> Optional[Tuple[float, Pair]]:
     if not coordinates_1 or not coordinates_2:
         return None
 
     n = min(len(coordinates_1), len(coordinates_2))
-    if n == 0:
+    if n == 0 or time_seconds <= 0 or gsd_cm_per_pixel <= 0:
         return None
 
-    if time_seconds <= 0 or gsd_cm_per_pixel <= 0:
-        return None
-
-    gsd_m_per_px = gsd_cm_per_pixel / 100.0
     valid: List[Tuple[float, Pair]] = []
+
     for (x1, y1), (x2, y2) in zip(coordinates_1[:n], coordinates_2[:n]):
         d_px = math.hypot(x1 - x2, y1 - y2)
-        d_m = d_px * gsd_m_per_px
 
-        speed_kmh = (d_m / 1000.0) / (time_seconds / 3600.0)
+        # px -> km using GSD (cm/px)
+        d_km = d_px * gsd_cm_per_pixel / 100000.0
+        speed_kmps = d_km / time_seconds
 
-        if min_speed_kmh <= speed_kmh <= max_speed_kmh:
-            valid.append((d_m, ((x1, y1), (x2, y2))))
+        if min_speed_kmps <= speed_kmps <= max_speed_kmps:
+            valid.append((d_px, ((x1, y1), (x2, y2))))
 
     if not valid:
         return None
 
-    # Sort by distance so we can pick the median-distance pair
     valid.sort(key=lambda t: t[0])
+    distances_px = [d for d, _ in valid]
+    med_px = median(distances_px)
 
-    distances = [d for d, _ in valid]
-    med_dist = median(distances)
-
-    # choose the pair corresponding to the median (lower median for even count)
     m = len(valid)
     med_idx = m // 2 if (m % 2 == 1) else (m // 2 - 1)
+    return med_px, valid[med_idx][1]
 
-    return med_dist, valid[med_idx][1]
 
 def calculate_speed_in_kmps(feature_distance_px: float, gsd_cm_per_px: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
@@ -137,6 +138,7 @@ def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
 
     if gsd_cm_per_px is None:
         gsd_cm_per_px = get_gsd_cm_per_px()
+
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
         raise ValueError("Time difference is zero or negative (EXIF timestamps wrong?).")
@@ -152,11 +154,21 @@ def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
         save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, save_matches)
 
     coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
-    average_feature_distance, (pos1, pos2) = calculate_median_distance(coordinates_1, coordinates_2)
 
-    print(calc.calc_speed(pos1, pos2, time_difference))
+    result = calculate_median_distance(
+        coordinates_1, coordinates_2,
+        time_seconds=time_difference,
+        gsd_cm_per_pixel=gsd_cm_per_px,
+        min_speed_kmps=6.0,
+        max_speed_kmps=9.0,
+    )
+    if result is None:
+        raise ValueError("No valid matched feature pairs in expected ISS speed range.")
 
-    return calculate_speed_in_kmps(average_feature_distance, gsd_cm_per_px, time_difference), 
+    median_distance_px, (pos1, pos2) = result
+
+    return (calculate_speed_in_kmps(median_distance_px, gsd_cm_per_px, time_difference),)
+
 
 
 def _cli():
