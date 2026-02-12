@@ -21,13 +21,18 @@ def run_exif(photo_a: Path, photo_b: Path):
         return 
 
 
-def photo_and_process(cam, last_photo = None) -> tuple[str, float | None]:
+def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
     photo = take_photo('image', 'images/', cam)
     if last_photo is not None:
-        speed = EXIF.run(last_photo, photo)[0]
+        try:
+            speed = EXIF.run(last_photo, photo)[0]
+        except Exception as e:
+            print(f"EXIF failed for {last_photo} -> {photo}: {e}")
+            speed = None
     else:
         speed = None
     return (str(photo), speed)
+
 
  
 def get_stan_dev(measurements: list[float]) -> float | None:

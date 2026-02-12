@@ -55,7 +55,16 @@ def convert_to_cv(image_1: str, image_2: str):
 
 
 def calculate_features(image_1_cv, image_2_cv, feature_number: int):
-    orb = cv2.ORB_create(nfeatures=feature_number)
+    image_1_cv = _prep(image_1_cv)
+    image_2_cv = _prep(image_2_cv)
+
+    orb = cv2.ORB_create(
+        nfeatures=feature_number,
+        scaleFactor=1.2,
+        nlevels=8,
+        edgeThreshold=15,
+        fastThreshold=7,
+    )
     keypoints_1, descriptors_1 = orb.detectAndCompute(image_1_cv, None)
     keypoints_2, descriptors_2 = orb.detectAndCompute(image_2_cv, None)
 
@@ -66,9 +75,19 @@ def calculate_features(image_1_cv, image_2_cv, feature_number: int):
 
 
 def calculate_matches(descriptors_1, descriptors_2):
-    brute_force = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = brute_force.match(descriptors_1, descriptors_2)
-    return sorted(matches, key=lambda x: x.distance)
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    knn = bf.knnMatch(descriptors_1, descriptors_2, k=2)
+
+    good = []
+    for m_n in knn:
+        if len(m_n) != 2:
+            continue
+        m, n = m_n
+        if m.distance < 0.75 * n.distance:
+            good.append(m)
+
+    return sorted(good, key=lambda x: x.distance)
+
 
 
 def find_matching_coordinates(keypoints_1, keypoints_2, matches):
@@ -151,7 +170,7 @@ def run(
     image_1: str,
     image_2: str,
     gsdnapix: float | None = None,
-    nfeatures: int = 2000,
+    nfeatures: int = 4000,
     save_matches: str | None = None,
 ):
     if gsdnapix is None:
@@ -167,7 +186,7 @@ def run(
     )
 
     matches = calculate_matches(descriptors_1, descriptors_2)
-    if len(matches) < 30:
+    if len(matches) < 20:
         raise ValueError(f"Too few matches ({len(matches)}).")
 
     # --- Build matched point arrays
@@ -186,7 +205,7 @@ def run(
     pts1_in = pts1[inliers].reshape(-1, 2)
     pts2_in = pts2[inliers].reshape(-1, 2)
 
-    if pts1_in.shape[0] < 20:
+    if pts1_in.shape[0] < 12:
         raise ValueError(f"Too few inliers after RANSAC ({pts1_in.shape[0]}).")
 
     # --- Choose a representative inlier pair (median displacement)
