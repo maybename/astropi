@@ -137,7 +137,7 @@ def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
         nfeatures: int = 1000, save_matches: str | None = None):
 
     if gsd_cm_per_px is None:
-        gsd_cm_per_px = get_gsd_cm_per_px()
+        gsd_cm_per_px = get_gsdnapix()
 
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
@@ -166,8 +166,8 @@ def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
         raise ValueError("No valid matched feature pairs in expected ISS speed range.")
 
     median_distance_px, (pos1, pos2) = result
-
-    return (calculate_speed_in_kmps(median_distance_px, gsd_cm_per_px, time_difference),)
+    return (calc.calc_speed(pos1, pos2, time_difference),)
+    # return (calculate_speed_in_kmps(median_distance_px, gsd_cm_per_px, time_difference),)
 
 
 

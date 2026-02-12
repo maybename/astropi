@@ -12,17 +12,18 @@ Position = tuple[float, float]
 def get_GSD(height: float) -> tuple[float, float]:
     return height*SENSOR_DIM[0]/CAM_RESSOLUTION[0]/FOCUS_LENGTH, height*SENSOR_DIM[1]/CAM_RESSOLUTION[1]/FOCUS_LENGTH
 
+from config import get_gsdnapix
 
 
 def _calc_angle_from_mid(pixel: Position, height: float):
     # height: float     - height in m
-    GSD_x, GSD_y = get_GSD(height)
+    gsd = get_gsdnapix()
 
     p_x = pixel[0] - CAM_RESSOLUTION[0]/2
     p_y = pixel[1] - CAM_RESSOLUTION[1]/2
 
-    beta_x = math.atan(p_x*GSD_x/height)
-    beta_y = math.atan(p_y*GSD_y/height)
+    beta_x = math.atan(p_x*gsd/height)
+    beta_y = math.atan(p_y*gsd/height)
     
     alpha_x = math.asin(math.sin(beta_x)*(1+height/EARTH_RADIUS))
     alpha_y = math.asin(math.sin(beta_y)*(1+height/EARTH_RADIUS))
