@@ -1,86 +1,64 @@
-# main.py
-from __future__ import annotations
-
-import sys
-import subprocess
+from picamzero import Camera
 from pathlib import Path
+import time, math
+import EXIF  # EXIF.py -> module name EXIF
 
-from fotak import take_three_photos
+from fotak import take_photo
+from orbit import get_speed_approx
 
-
-def run_exif_as_module(photo_a: Path, photo_b: Path):
-    """
-    If EXIF.py exposes a function, use it here.
-    Example: EXIF.calculate(photo_a, photo_b)
-    """
-    import EXIF  # EXIF.py -> module name EXIF
-
-    # ---- ADAPT THIS PART ----
-    # I don't know your EXIF.py API, so pick ONE pattern:
-
-    # Pattern A: function named "calculate"
-    if hasattr(EXIF, "calculate"):
-        return EXIF.calculate(str(photo_a), str(photo_b))
-
-    # Pattern B: function named "main" that takes args
-    if hasattr(EXIF, "main"):
-        return EXIF.main(str(photo_a), str(photo_b))
-
-    raise AttributeError(
-        "EXIF.py imported, but no known callable found. "
-        "Add a function like calculate(file1, file2) or adjust main.py to match EXIF.py."
-    )
-
-
-def run_exif_as_script(photo_a: Path, photo_b: Path):
-    """
-    If EXIF.py is meant to be run as a script: python3 EXIF.py a.jpg b.jpg
-    Returns stdout text.
-    """
-    cmd = [sys.executable, "EXIF.py", str(photo_a), str(photo_b)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"EXIF.py failed (code {result.returncode}).\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-        )
-    return result.stdout.strip()
-
-
+TOLERANCE = 1 # in km/s
+RUNTIME = 10*60     # 10 Minutes, in second
+INTERVAL = 10       # in seconds
 def run_exif(photo_a: Path, photo_b: Path):
     """
     Try module-style first; if that doesn't work, fall back to script-style.
     """
     try:
-        return run_exif_as_module(photo_a, photo_b)
+        return (photo_a, photo_b)
     except Exception:
         # fallback: run as CLI script
-        return run_exif_as_script(photo_a, photo_b)
+        return 
 
+
+def photo_and_process(cam, last_photo = None) -> tuple[str, float | None]:
+    photo = take_photo('image', 'images/', cam)
+    if last_photo is not None:
+        speed = EXIF.run(last_photo, photo)[0]
+    else:
+        speed = None
+    return (str(photo), speed)
+
+ 
+def get_stan_dev(measurements: list[float]) -> float | None:
+    if len(measurements) <= 0:
+        return None
+    average: float = sum(measurements)/len(measurements)
+    total = 0
+    for m in measurements:
+        total += (m - average)**2
+
+    return math.sqrt(1/len(measurements)*total)
 
 def main() -> int:
-    photos = take_three_photos(prefix="atlas_photo", directory=".", interval_s=35.0)
+    last_photo: str | None = None
+    speeds: list[float] = []
+    start_time = time.time()
+    camera = Camera()
 
-    # Primary pair: 35s apart
-    pairs = [(photos[0], photos[1]), (photos[1], photos[2])]
-
-    last_error = None
-    for a, b in pairs:
-        try:
-            output = run_exif(a, b)
-            print(a, b, output)
-            print(f"EXIF result using: {a.name} and {b.name}")
-            print(output)
-
-            # Optional: save result to a file
-            Path("result.txt").write_text(f"{a.name} {b.name}\n{output}\n", encoding="utf-8")
-            return 0
-        except Exception as e:
-            last_error = e
-            print(f"Failed EXIF on pair {a.name}, {b.name}: {e}", file=sys.stderr)
-
-    print(f"All EXIF attempts failed. Last error: {last_error}", file=sys.stderr)
-    return 1
-
-
+    while start_time + RUNTIME > time.time():
+        timer_start = time.time()
+        last_photo, speed = photo_and_process(camera, last_photo)
+        print(last_photo, speed)
+        if speed is not None: # and abs(speed - get_speed_approx()) < TOLERANCE:
+            speeds.append(speed)
+            with open("result.txt", "w") as f:
+                f.write(f"{sum(speeds)/len(speeds):.03f} km/s")
+                print(f"{sum(speeds)/len(speeds)} ± {get_stan_dev(speeds):.02f} km/s")
+        
+        while timer_start + INTERVAL < time.time():
+            time.sleep(0.3)
+        
+            
+            
 if __name__ == "__main__":
     raise SystemExit(main())
