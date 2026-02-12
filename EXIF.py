@@ -10,9 +10,29 @@ from statistics import median
 from typing import List, Tuple, Optional, Literal
 import calc
 from config import get_gsdnapix
+import numpy as np
+
 
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
+from pathlib import Path
+def _prep(gray):
+    # Boost contrast so ORB finds more stable keypoints on haze/ocean/clouds
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return clahe.apply(gray)
+
+
+def get_time_difference(image_1: str, image_2: str) -> float:
+    # Try filename timestamps first: prefix_1234567890.123.jpg
+    try:
+        t1 = float(Path(image_1).stem.split("_")[-1])
+        t2 = float(Path(image_2).stem.split("_")[-1])
+        return abs(t2 - t1)
+    except Exception:
+        # fallback to EXIF seconds
+        time_1 = get_time(image_1)
+        time_2 = get_time(image_2)
+        return abs((time_2 - time_1).total_seconds())
 
 
 def get_time(image_path: str) -> datetime:
@@ -22,12 +42,6 @@ def get_time(image_path: str) -> datetime:
         if not time_str:
             raise ValueError(f"No datetime_original EXIF tag found in {image_path}")
         return datetime.strptime(time_str, "%Y:%m:%d %H:%M:%S")
-
-
-def get_time_difference(image_1: str, image_2: str) -> float:
-    time_1 = get_time(image_1)
-    time_2 = get_time(image_2)
-    return abs((time_2 - time_1).total_seconds())
 
 
 def convert_to_cv(image_1: str, image_2: str):
@@ -122,7 +136,7 @@ def calculate_median_distance(
     return med_px, valid[med_idx][1]
 
 
-def calculate_speed_in_kmps(feature_distance_px: float, gsd_cm_per_px: float, time_difference_s: float) -> float:
+def calculate_speed_in_kmps(feature_distance_px: float, gsdnapix: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
     distance_km = feature_distance_px * gsdnapix/ 100000.0
     return distance_km / time_difference_s
@@ -133,42 +147,66 @@ def save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches
     cv2.imwrite(out_path, match_img)
 
 
-def run(image_1: str, image_2: str, gsd_cm_per_px: float | None = None,
-        nfeatures: int = 1000, save_matches: str | None = None):
-
+def run(
+    image_1: str,
+    image_2: str,
+    gsdnapix: float | None = None,
+    nfeatures: int = 2000,
+    save_matches: str | None = None,
+):
     if gsdnapix is None:
-        gsdnapix= get_gsdnapix()
+        gsdnapix = get_gsdnapix()
 
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
-        raise ValueError("Time difference is zero or negative (EXIF timestamps wrong?).")
+        raise ValueError("Time difference is zero or negative.")
 
     image_1_cv, image_2_cv = convert_to_cv(image_1, image_2)
-    keypoints_1, keypoints_2, descriptors_1, descriptors_2 = calculate_features(image_1_cv, image_2_cv, nfeatures)
-    matches = calculate_matches(descriptors_1, descriptors_2)
-
-    if len(matches) < 10:
-        raise ValueError(f"Too few matches ({len(matches)}). Try higher nfeatures or better images.")
-
-    if save_matches:
-        save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, save_matches)
-
-    coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
-
-    result = calculate_median_distance(
-        coordinates_1, coordinates_2,
-        time_seconds=time_difference,
-        gsd_cm_per_pixel=gsd_cm_per_px,
-        min_speed_kmps=6.0,
-        max_speed_kmps=9.0,
+    keypoints_1, keypoints_2, descriptors_1, descriptors_2 = calculate_features(
+        image_1_cv, image_2_cv, nfeatures
     )
-    if result is None:
-        raise ValueError("No valid matched feature pairs in expected ISS speed range.")
 
-    median_distance_px, (pos1, pos2) = result
-    return (calc.calc_speed(pos1, pos2, time_difference),)
-    # return (calculate_speed_in_kmps(median_distance_px, gsd_cm_per_px, time_difference),)
+    matches = calculate_matches(descriptors_1, descriptors_2)
+    if len(matches) < 30:
+        raise ValueError(f"Too few matches ({len(matches)}).")
 
+    # --- Build matched point arrays
+    pts1 = np.float32([keypoints_1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    pts2 = np.float32([keypoints_2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+    # --- Robustly estimate motion and keep only inliers
+    # Affine partial: translation + rotation + scale (good for small viewpoint changes)
+    M, inliers = cv2.estimateAffinePartial2D(
+        pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=3.0, maxIters=2000
+    )
+    if inliers is None:
+        raise ValueError("RANSAC failed (no inliers).")
+
+    inliers = inliers.ravel().astype(bool)
+    pts1_in = pts1[inliers].reshape(-1, 2)
+    pts2_in = pts2[inliers].reshape(-1, 2)
+
+    if pts1_in.shape[0] < 20:
+        raise ValueError(f"Too few inliers after RANSAC ({pts1_in.shape[0]}).")
+
+    # --- Choose a representative inlier pair (median displacement)
+    disp = np.linalg.norm(pts2_in - pts1_in, axis=1)
+    idx = int(np.argsort(disp)[len(disp) // 2])
+
+    pos1 = tuple(map(float, pts1_in[idx]))
+    pos2 = tuple(map(float, pts2_in[idx]))
+
+    # Optional: still filter by expected km/s using simple GSD before calc_speed
+    # (prevents absurd pairs from slipping through if RANSAC is weak)
+    d_px = float(disp[idx])
+    d_km = d_px * gsdnapix / 100000.0
+    speed_gsd = d_km / time_difference
+    if not (6.0 <= speed_gsd <= 9.0):
+        raise ValueError(f"Inlier displacement implies {speed_gsd:.2f} km/s (out of expected range).")
+
+    # --- Final speed using your geometry model
+    speed_kmps = calc.calc_speed(pos1, pos2, time_difference)
+    return (speed_kmps,)
 
 
 def _cli():
@@ -180,7 +218,7 @@ def _cli():
     p.add_argument("--save-matches", default=None, help="Write match image to this path (no GUI needed)")
     args = p.parse_args()
 
-    speed = run(args.image1, args.image2, gsd_cm_per_px=args.gsd, nfeatures=args.nfeatures, save_matches=args.save_matches)
+    speed = run(args.image1, args.image2, gsdnapix=args.gsd, nfeatures=args.nfeatures, save_matches=args.save_matches)
     print(speed)
 
 
