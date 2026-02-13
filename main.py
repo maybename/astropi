@@ -3,9 +3,11 @@ from pathlib import Path
 import time, math
 import EXIF  # EXIF.py -> module name EXIF
 from config import INTERVAL_S
-
+from exif import Image
 from fotak import take_photo
 from orbit import get_speed_approx
+
+from datetime import datetime
 
 TOLERANCE = 1 # in km/s
 RUNTIME = 10*60     # 10 Minutes, in second
@@ -23,6 +25,12 @@ def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
     else:
         speed = None
     return (str(photo), speed)
+pathtime, x = photo_and_process(Camera(), None)
+with open(pathtime, 'rb') as image_file:
+        img = Image(image_file)
+        time_str = img.get("datetime_original")
+        timeheight = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
+
 
 
  

@@ -1,7 +1,7 @@
 # exif.py
 from exif import Image
 from calc import calc_dist
-from orbit import get_height
+from orbit import get_height, get_height_at
 from datetime import datetime
 import cv2
 import math
@@ -12,7 +12,8 @@ from typing import List, Tuple, Optional, Literal
 import calc
 from config import get_gsdnapix
 import numpy as np
-
+from picamzero import Camera
+from fotak import take_photo
 
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
@@ -22,6 +23,23 @@ def _prep(gray):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     return clahe.apply(gray)
 
+
+def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
+    photo = take_photo('image', 'images/', cam)
+    if last_photo is not None:
+        try:
+            speed = EXIF.run(last_photo, photo)[0]
+        except Exception as e:
+            print(f"EXIF failed for {last_photo} -> {photo}: {e}")
+            speed = None
+    else:
+        speed = None
+    return (str(photo), speed)
+pathtime, x = photo_and_process(Camera(), None)
+with open(pathtime, 'rb') as image_file:
+        img = Image(image_file)
+        time_str = img.get("datetime_original")
+        time = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
 
 def get_time_difference(image_1: str, image_2: str) -> float:
     # Try filename timestamps first: prefix_1234567890.123.jpg
@@ -212,7 +230,7 @@ def run(
     gsdnapix: float | None = None,
     nfeatures: int = 4000,
     save_matches: str | None = None,
-    height: float = get_height()
+    height: float = get_height_at(time)
 ):
     if gsdnapix is None:
         gsdnapix = get_gsdnapix()
@@ -292,3 +310,4 @@ def _cli():
 
 if __name__ == "__main__":
     _cli()
+"""
