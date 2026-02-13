@@ -1,6 +1,7 @@
 # exif.py
 from exif import Image
 from calc import calc_dist
+from orbit import get_height
 from datetime import datetime
 import cv2
 import math
@@ -77,14 +78,30 @@ def calculate_features(image_1_cv, image_2_cv, feature_number: int):
 def calculate_matches(descriptors_1, descriptors_2):
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
     knn = bf.knnMatch(descriptors_1, descriptors_2, k=2)
+    matches = [m[0] for m in knn]
+    return knn, matches
 
+def clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_diff):
+    points1, points2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
+    to_remove: list[int] = []
+    
+    shortest_dist = calc.minimum_pixel_diff(time_diff)[0]
+    print(shortest_dist)
+    
+    for i, (pos1, pos2) in enumerate(zip(points1, points2)):
+        pixel_distance = math.sqrt(pow(pos1[0] - pos2[0], 2) + pow(pos1[1] - pos2[1], 2))
+        print(pixel_distance, shortest_dist)
+        if pixel_distance < shortest_dist:
+            to_remove.append(i)
+            
     good = []
-    for m_n in knn:
-        if len(m_n) != 2:
+    for i, m_n in enumerate(knn):
+        if len(m_n) != 2 or i in to_remove:
             continue
         m, n = m_n
         if m.distance < 0.75 * n.distance:
             good.append(m)
+
 
     return sorted(good, key=lambda x: x.distance)
 
@@ -155,6 +172,29 @@ def calculate_median_distance(
     return med_px, valid[med_idx][1]
 
 
+def calculate_mean_distance(coordinates_1, coordinates_2):
+    all_distances = 0
+    merged_coordinates = list(zip(coordinates_1, coordinates_2))
+    for coordinate in merged_coordinates:
+        x_difference = coordinate[0][0] - coordinate[1][0]
+        y_difference = coordinate[0][1] - coordinate[1][1]
+        distance = math.hypot(x_difference, y_difference)
+        all_distances = all_distances + distance
+    
+    mean_distance = all_distances / len(merged_coordinates)
+    
+    # Calculate average coordinates
+    avg_x1 = sum(coord[0] for coord in coordinates_1) / len(coordinates_1)
+    avg_y1 = sum(coord[1] for coord in coordinates_1) / len(coordinates_1)
+    avg_coords_1 = (avg_x1, avg_y1)
+    
+    avg_x2 = sum(coord[0] for coord in coordinates_2) / len(coordinates_2)
+    avg_y2 = sum(coord[1] for coord in coordinates_2) / len(coordinates_2)
+    avg_coords_2 = (avg_x2, avg_y2)
+    
+    return mean_distance, (avg_coords_1, avg_coords_2)
+
+
 def calculate_speed_in_kmps(feature_distance_px: float, gsdnapix: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
     distance_km = feature_distance_px * gsdnapix/ 100000.0
@@ -172,6 +212,7 @@ def run(
     gsdnapix: float | None = None,
     nfeatures: int = 4000,
     save_matches: str | None = None,
+    height: float = get_height()
 ):
     if gsdnapix is None:
         gsdnapix = get_gsdnapix()
@@ -185,7 +226,15 @@ def run(
         image_1_cv, image_2_cv, nfeatures
     )
 
-    matches = calculate_matches(descriptors_1, descriptors_2)
+    knn, matches = calculate_matches(descriptors_1, descriptors_2)
+    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err1.jpg")
+    matches = clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_difference)
+    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err2.jpg")
+    
+    
+    
+    
+    
     if len(matches) < 20:
         raise ValueError(f"Too few matches ({len(matches)}).")
 
@@ -222,7 +271,7 @@ def run(
     speed_gsd = d_km / time_difference
     if not (6.0 <= speed_gsd <= 9.0):
         raise ValueError(f"Inlier displacement implies {speed_gsd:.2f} km/s (out of expected range).")
-
+"""
     # --- Final speed using your geometry model
     speed_kmps = calc.calc_speed(pos1, pos2, time_difference)
     return (speed_kmps,)

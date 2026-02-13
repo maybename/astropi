@@ -1,8 +1,10 @@
 from skyfield.api import load
 from astro_pi_orbit import ISS
+import time
+
+ts = load.timescale()
 
 def get_speed_approx() -> float:
-    ts = load.timescale()
     t = ts.now()
 
     iss = ISS()
@@ -17,4 +19,8 @@ def get_speed_approx() -> float:
 def get_height() -> float:
     iss = ISS()
     return iss.coordinates().elevation.m
+
+def get_height_at(time_s: float):
+    iss = ISS()
+    pos = iss.at(ts.from_datetime())
 

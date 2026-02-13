@@ -10,15 +10,6 @@ from orbit import get_speed_approx
 TOLERANCE = 1 # in km/s
 RUNTIME = 10*60     # 10 Minutes, in second
 INTERVAL = INTERVAL_S     # in seconds
-def run_exif(photo_a: Path, photo_b: Path):
-    """
-    Try module-style first; if that doesn't work, fall back to script-style.
-    """
-    try:
-        return (photo_a, photo_b)
-    except Exception:
-        # fallback: run as CLI script
-        return 
 
 
 def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:

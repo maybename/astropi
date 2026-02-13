@@ -3,7 +3,7 @@ from __future__ import annotations
 from orbit import get_height
 from calc import get_GSD
 
-INTERVAL_S: float = 35.0
+INTERVAL_S: float = 10.0
 
 def get_gsdnapix() -> float:
     height_m = get_height()
