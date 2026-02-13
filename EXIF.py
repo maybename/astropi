@@ -167,43 +167,8 @@ def run(
     )
 
     matches = calculate_matches(descriptors_1, descriptors_2)
-    if len(matches) < 30:
-        raise ValueError(f"Too few matches ({len(matches)}).")
-
-    # --- Build matched point arrays
-    pts1 = np.float32([keypoints_1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-    pts2 = np.float32([keypoints_2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-
-    # --- Robustly estimate motion and keep only inliers
-    # Affine partial: translation + rotation + scale (good for small viewpoint changes)
-    M, inliers = cv2.estimateAffinePartial2D(
-        pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=3.0, maxIters=2000
-    )
-    if inliers is None:
-        raise ValueError("RANSAC failed (no inliers).")
-
-    inliers = inliers.ravel().astype(bool)
-    pts1_in = pts1[inliers].reshape(-1, 2)
-    pts2_in = pts2[inliers].reshape(-1, 2)
-
-    if pts1_in.shape[0] < 20:
-        raise ValueError(f"Too few inliers after RANSAC ({pts1_in.shape[0]}).")
-
-    # --- Choose a representative inlier pair (median displacement)
-    disp = np.linalg.norm(pts2_in - pts1_in, axis=1)
-    idx = int(np.argsort(disp)[len(disp) // 2])
-
-    pos1 = tuple(map(float, pts1_in[idx]))
-    pos2 = tuple(map(float, pts2_in[idx]))
-
-    # Optional: still filter by expected km/s using simple GSD before calc_speed
-    # (prevents absurd pairs from slipping through if RANSAC is weak)
-    d_px = float(disp[idx])
-    d_km = d_px * gsdnapix / 100000.0
-    speed_gsd = d_km / time_difference
-    if not (6.0 <= speed_gsd <= 9.0):
-        raise ValueError(f"Inlier displacement implies {speed_gsd:.2f} km/s (out of expected range).")
-
+    print(matches)
+    exit()
     # --- Final speed using your geometry model
     speed_kmps = calc.calc_speed(pos1, pos2, time_difference)
     return (speed_kmps,)
