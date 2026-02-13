@@ -1,6 +1,7 @@
 from skyfield.api import load
 from astro_pi_orbit import ISS
-import time
+from datetime import datetime, timezone
+from calc import EARTH_RADIUS
 
 ts = load.timescale()
 
@@ -22,5 +23,9 @@ def get_height() -> float:
 
 def get_height_at(time_s: float):
     iss = ISS()
-    pos = iss.at(ts.from_datetime())
 
+    dt = datetime.fromtimestamp(time_s, tz=timezone.utc)
+    
+    pos = iss.at(ts.from_datetime(dt))
+    height = pos.distance().m-EARTH_RADIUS
+    return height
