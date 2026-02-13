@@ -3,31 +3,35 @@ from pathlib import Path
 import time, math
 import EXIF  # EXIF.py -> module name EXIF
 from config import INTERVAL_S
-
+from exif import Image
 from fotak import take_photo
 from orbit import get_speed_approx
+
+from datetime import datetime
 
 TOLERANCE = 1 # in km/s
 RUNTIME = 10*60     # 10 Minutes, in second
 INTERVAL = INTERVAL_S     # in seconds
-def run_exif(photo_a: Path, photo_b: Path):
-    """
-    Try module-style first; if that doesn't work, fall back to script-style.
-    """
-    try:
-        return (photo_a, photo_b)
-    except Exception:
-        # fallback: run as CLI script
-        return 
 
 
-def photo_and_process(cam, last_photo = None) -> tuple[str, float | None]:
+def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
     photo = take_photo('image', 'images/', cam)
     if last_photo is not None:
-        speed = EXIF.run(last_photo, photo)[0]
+        try:
+            speed = EXIF.run(last_photo, photo)[0]
+        except Exception as e:
+            print(f"EXIF failed for {last_photo} -> {photo}: {e}")
+            speed = None
     else:
         speed = None
     return (str(photo), speed)
+pathtime, x = photo_and_process(Camera(), None)
+with open(pathtime, 'rb') as image_file:
+        img = Image(image_file)
+        time_str = img.get("datetime_original")
+        timeheight = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
+
+
 
  
 def get_stan_dev(measurements: list[float]) -> float | None:

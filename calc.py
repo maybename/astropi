@@ -16,38 +16,42 @@ from config import get_gsdnapix
 
 
 def _calc_angle_from_mid(pixel: Position, height: float):
-    # height: float     - height in m
-    gsd = get_gsdnapix()
-
-    p_x = pixel[0] - CAM_RESSOLUTION[0]/2
-    p_y = pixel[1] - CAM_RESSOLUTION[1]/2
-
-    beta_x = math.atan(p_x*gsd/height)
-    beta_y = math.atan(p_y*gsd/height)
+    # Convert pixels to ground distance using GSD
+    GSD_x, GSD_y = get_GSD(height)
+    ground_x = (pixel[0] - CAM_RESSOLUTION[0]/2) * GSD_x  # meters
+    ground_y = (pixel[1] - CAM_RESSOLUTION[1]/2) * GSD_y  # meters
     
-    alpha_x = math.asin(math.sin(beta_x)*(1+height/EARTH_RADIUS))
-    alpha_y = math.asin(math.sin(beta_y)*(1+height/EARTH_RADIUS))
-
+    # Convert ground distance to arc angle
+    alpha_x = math.atan(ground_x / (EARTH_RADIUS + height))  # simpler for small angles
+    alpha_y = math.atan(ground_y / (EARTH_RADIUS + height))
+    
     return alpha_x, alpha_y
 
 def calc_dist(pos1: Position, pos2: Position, height: float):
     x1, y1 = _calc_angle_from_mid(pos1, height)
+    print(x1, y1)
     x2, y2 = _calc_angle_from_mid(pos2, height)
-    
+    print(x2, y2)
     return math.sqrt(pow(x1-x2, 2) + pow(y1 - y2, 2)) * EARTH_RADIUS
 
 def minimum_pixel_diff(time_diff: float):
     height = get_height()
     gsd = get_GSD(height)
-    dist = math.sqrt(MIN_SPEED)/2/time_diff
-    return (dist*gsd[0], dist*gsd[1])
+    dist = math.sqrt(MIN_SPEED)/2 * time_diff
+    return (dist/gsd[0], dist/gsd[1])
 
 def calc_speed(point1: Position, point2: Position, time_diff: float) -> float:
     print(point1, point2,time_diff)
     height = get_height()
-    s = calc_dist(point1, point2, height)/1000
+    distance = calc_dist(point1, point2, height)
+    print(distance)
+    s = distance/1000
     speed = s/time_diff
-    print(speed)
+    
+    print(f"  calc_dist={distance:.2f} m, time_diff={time_diff} s")
+    print(f"  → {s:.2f} km / {time_diff} s = {speed:.3f} km/s")
+    
+    
     return speed
 
 if __name__ == "__main__":

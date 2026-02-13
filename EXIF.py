@@ -1,6 +1,7 @@
 # exif.py
 from exif import Image
 from calc import calc_dist
+from orbit import get_height, get_height_at
 from datetime import datetime
 import cv2
 import math
@@ -11,7 +12,8 @@ from typing import List, Tuple, Optional, Literal
 import calc
 from config import get_gsdnapix
 import numpy as np
-
+from picamzero import Camera
+from fotak import take_photo
 
 Point = Tuple[float, float]
 Pair = Tuple[Point, Point]
@@ -21,6 +23,23 @@ def _prep(gray):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     return clahe.apply(gray)
 
+
+def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
+    photo = take_photo('image', 'images/', cam)
+    if last_photo is not None:
+        try:
+            speed = EXIF.run(last_photo, photo)[0]
+        except Exception as e:
+            print(f"EXIF failed for {last_photo} -> {photo}: {e}")
+            speed = None
+    else:
+        speed = None
+    return (str(photo), speed)
+pathtime, x = photo_and_process(Camera(), None)
+with open(pathtime, 'rb') as image_file:
+        img = Image(image_file)
+        time_str = img.get("datetime_original")
+        time = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
 
 def get_time_difference(image_1: str, image_2: str) -> float:
     # Try filename timestamps first: prefix_1234567890.123.jpg
@@ -55,7 +74,16 @@ def convert_to_cv(image_1: str, image_2: str):
 
 
 def calculate_features(image_1_cv, image_2_cv, feature_number: int):
-    orb = cv2.ORB_create(nfeatures=feature_number)
+    image_1_cv = _prep(image_1_cv)
+    image_2_cv = _prep(image_2_cv)
+
+    orb = cv2.ORB_create(
+        nfeatures=feature_number,
+        scaleFactor=1.2,
+        nlevels=8,
+        edgeThreshold=15,
+        fastThreshold=7,
+    )
     keypoints_1, descriptors_1 = orb.detectAndCompute(image_1_cv, None)
     keypoints_2, descriptors_2 = orb.detectAndCompute(image_2_cv, None)
 
@@ -66,9 +94,35 @@ def calculate_features(image_1_cv, image_2_cv, feature_number: int):
 
 
 def calculate_matches(descriptors_1, descriptors_2):
-    brute_force = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = brute_force.match(descriptors_1, descriptors_2)
-    return sorted(matches, key=lambda x: x.distance)
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    knn = bf.knnMatch(descriptors_1, descriptors_2, k=2)
+    matches = [m[0] for m in knn]
+    return knn, matches
+
+def clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_diff):
+    points1, points2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
+    to_remove: list[int] = []
+    
+    shortest_dist = calc.minimum_pixel_diff(time_diff)[0]
+    print(shortest_dist)
+    
+    for i, (pos1, pos2) in enumerate(zip(points1, points2)):
+        pixel_distance = math.sqrt(pow(pos1[0] - pos2[0], 2) + pow(pos1[1] - pos2[1], 2))
+        print(pixel_distance, shortest_dist)
+        if pixel_distance < shortest_dist:
+            to_remove.append(i)
+            
+    good = []
+    for i, m_n in enumerate(knn):
+        if len(m_n) != 2 or i in to_remove:
+            continue
+        m, n = m_n
+        if m.distance < 0.75 * n.distance:
+            good.append(m)
+
+
+    return sorted(good, key=lambda x: x.distance)
+
 
 
 def find_matching_coordinates(keypoints_1, keypoints_2, matches):
@@ -136,6 +190,29 @@ def calculate_median_distance(
     return med_px, valid[med_idx][1]
 
 
+def calculate_mean_distance(coordinates_1, coordinates_2):
+    all_distances = 0
+    merged_coordinates = list(zip(coordinates_1, coordinates_2))
+    for coordinate in merged_coordinates:
+        x_difference = coordinate[0][0] - coordinate[1][0]
+        y_difference = coordinate[0][1] - coordinate[1][1]
+        distance = math.hypot(x_difference, y_difference)
+        all_distances = all_distances + distance
+    
+    mean_distance = all_distances / len(merged_coordinates)
+    
+    # Calculate average coordinates
+    avg_x1 = sum(coord[0] for coord in coordinates_1) / len(coordinates_1)
+    avg_y1 = sum(coord[1] for coord in coordinates_1) / len(coordinates_1)
+    avg_coords_1 = (avg_x1, avg_y1)
+    
+    avg_x2 = sum(coord[0] for coord in coordinates_2) / len(coordinates_2)
+    avg_y2 = sum(coord[1] for coord in coordinates_2) / len(coordinates_2)
+    avg_coords_2 = (avg_x2, avg_y2)
+    
+    return mean_distance, (avg_coords_1, avg_coords_2)
+
+
 def calculate_speed_in_kmps(feature_distance_px: float, gsdnapix: float, time_difference_s: float) -> float:
     # distance in km: px * (cm/px) -> cm, then /100000 -> km
     distance_km = feature_distance_px * gsdnapix/ 100000.0
@@ -151,8 +228,9 @@ def run(
     image_1: str,
     image_2: str,
     gsdnapix: float | None = None,
-    nfeatures: int = 2000,
+    nfeatures: int = 4000,
     save_matches: str | None = None,
+    height: float = get_height_at(time)
 ):
     if gsdnapix is None:
         gsdnapix = get_gsdnapix()
@@ -166,9 +244,52 @@ def run(
         image_1_cv, image_2_cv, nfeatures
     )
 
-    matches = calculate_matches(descriptors_1, descriptors_2)
-    print(matches)
-    exit()
+    knn, matches = calculate_matches(descriptors_1, descriptors_2)
+    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err1.jpg")
+    matches = clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_difference)
+    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err2.jpg")
+    
+    
+    
+    
+    
+    if len(matches) < 20:
+        raise ValueError(f"Too few matches ({len(matches)}).")
+
+    # --- Build matched point arrays
+    pts1 = np.float32([keypoints_1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    pts2 = np.float32([keypoints_2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+    # --- Robustly estimate motion and keep only inliers
+    # Affine partial: translation + rotation + scale (good for small viewpoint changes)
+    M, inliers = cv2.estimateAffinePartial2D(
+        pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=3.0, maxIters=2000
+    )
+    if inliers is None:
+        raise ValueError("RANSAC failed (no inliers).")
+
+    inliers = inliers.ravel().astype(bool)
+    pts1_in = pts1[inliers].reshape(-1, 2)
+    pts2_in = pts2[inliers].reshape(-1, 2)
+
+    if pts1_in.shape[0] < 12:
+        raise ValueError(f"Too few inliers after RANSAC ({pts1_in.shape[0]}).")
+
+    # --- Choose a representative inlier pair (median displacement)
+    disp = np.linalg.norm(pts2_in - pts1_in, axis=1)
+    idx = int(np.argsort(disp)[len(disp) // 2])
+
+    pos1 = tuple(map(float, pts1_in[idx]))
+    pos2 = tuple(map(float, pts2_in[idx]))
+
+    # Optional: still filter by expected km/s using simple GSD before calc_speed
+    # (prevents absurd pairs from slipping through if RANSAC is weak)
+    d_px = float(disp[idx])
+    d_km = d_px * gsdnapix / 100000.0
+    speed_gsd = d_km / time_difference
+    if not (6.0 <= speed_gsd <= 9.0):
+        raise ValueError(f"Inlier displacement implies {speed_gsd:.2f} km/s (out of expected range).")
+"""
     # --- Final speed using your geometry model
     speed_kmps = calc.calc_speed(pos1, pos2, time_difference)
     return (speed_kmps,)
@@ -189,3 +310,4 @@ def _cli():
 
 if __name__ == "__main__":
     _cli()
+"""

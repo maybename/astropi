@@ -1,8 +1,12 @@
 from skyfield.api import load
 from astro_pi_orbit import ISS
+from datetime import datetime, timezone
+from datetime import timezone
+EARTH_RADIUS = 6378000 # m
+
+ts = load.timescale()
 
 def get_speed_approx() -> float:
-    ts = load.timescale()
     t = ts.now()
 
     iss = ISS()
@@ -18,3 +22,16 @@ def get_height() -> float:
     iss = ISS()
     return iss.coordinates().elevation.m
 
+def get_height_at(time_s: float):
+    iss = ISS()
+    ts = load.timescale()
+
+# assuming `time` is a Python datetime
+    if time_s.tzinfo is None:
+        time_s = time_s.replace(tzinfo=timezone.utc)   # EXIF timestamps usually have no tz; treat as UTC
+    else:
+        time_s = time_s.astimezone(timezone.utc)
+    time_sf = ts.from_datetime(time_s)   # Skyfield Time object
+    pos = iss.at(time_sf)
+    height = pos.distance().m-EARTH_RADIUS
+    return height

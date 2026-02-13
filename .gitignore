@@ -1,0 +1,21 @@
+# virtual environments
+.venv*/
+venv*/
+.env*/
+
+# python cache
+__pycache__/
+*.py[cod]
+
+# build artifacts
+dist/
+build/
+*.egg-info/
+
+# editor
+.vscode/
+images/
+**/images/
+.venv*/
+__pycache__/
+*.pyc
