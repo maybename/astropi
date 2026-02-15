@@ -88,9 +88,7 @@ def take_photo(
     camera = None
 ) -> Path:
     """
-    Takes 3 photos using camerazero at t=0, t=interval_s, t=2*interval_s.
-
-    Returns: list of Path objects for the saved images in capture order.
+    take one photo from picamerazero and return its path as str
     """
 
     if camera is None:

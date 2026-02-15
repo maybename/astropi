@@ -6,59 +6,54 @@ from config import INTERVAL_S
 from exif import Image
 from fotak import take_photo
 from orbit import get_speed_approx
-
+import traceback
 from datetime import datetime
+import calc
 
 TOLERANCE = 1 # in km/s
 RUNTIME = 10*60     # 10 Minutes, in second
 INTERVAL = INTERVAL_S     # in seconds
 
 
-def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
+def photo_and_process(cam, last_photo=None) -> tuple[str, float | None, list[float]]:
     photo = take_photo('image', 'images/', cam)
     if last_photo is not None:
         try:
-            speed = EXIF.run(last_photo, photo)[0]
+            speed, speeds = EXIF.run(last_photo, photo)
         except Exception as e:
             print(f"EXIF failed for {last_photo} -> {photo}: {e}")
+            traceback.print_exc()
             speed = None
+            speeds = []
     else:
         speed = None
-    return (str(photo), speed)
-pathtime, x = photo_and_process(Camera(), None)
-with open(pathtime, 'rb') as image_file:
-        img = Image(image_file)
-        time_str = img.get("datetime_original")
-        timeheight = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
-
-
-
- 
-def get_stan_dev(measurements: list[float]) -> float | None:
-    if len(measurements) <= 0:
-        return None
-    average: float = sum(measurements)/len(measurements)
-    total = 0
-    for m in measurements:
-        total += (m - average)**2
-
-    return math.sqrt(1/len(measurements)*total)
+        speeds = []
+    return (str(photo), speed, speeds)
 
 def main() -> int:
+    num_of_photos = 0
     last_photo: str | None = None
     speeds: list[float] = []
     start_time = time.time()
     camera = Camera()
 
-    while start_time + RUNTIME > time.time():
+    while start_time + RUNTIME > time.time() and num_of_photos < 42:
         timer_start = time.time()
-        last_photo, speed = photo_and_process(camera, last_photo)
+        last_photo, speed, measured_all = photo_and_process(camera, last_photo)
+        num_of_photos += 1
         print(last_photo, speed)
         if speed is not None: # and abs(speed - get_speed_approx()) < TOLERANCE:
+            # speeds += measured_all
             speeds.append(speed)
+
+            if len(speeds) > 1:
+                avg_speed, std = calc.do_statistik(speeds)
+            else:
+                avg_speed = speed
+                std = 0.0
             with open("result.txt", "w") as f:
-                f.write(f"{sum(speeds)/len(speeds):.03f} km/s")
-                print(f"{sum(speeds)/len(speeds)} ± {get_stan_dev(speeds):.02f} km/s")
+                f.write(f"{avg_speed:.03f} km/s")
+                print(f"{avg_speed} ± {std:.02f} km/s")
         
         while time.time() < timer_start + INTERVAL:
             time.sleep(0.3)

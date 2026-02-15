@@ -1,7 +1,6 @@
 # exif.py
 from exif import Image
-from calc import calc_dist
-from orbit import get_height, get_height_at
+from orbit import get_height_at
 from datetime import datetime
 import cv2
 import math
@@ -35,11 +34,7 @@ def photo_and_process(cam, last_photo=None) -> tuple[str, float | None]:
     else:
         speed = None
     return (str(photo), speed)
-pathtime, x = photo_and_process(Camera(), None)
-with open(pathtime, 'rb') as image_file:
-        img = Image(image_file)
-        time_str = img.get("datetime_original")
-        time = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
+
 
 def get_time_difference(image_1: str, image_2: str) -> float:
     # Try filename timestamps first: prefix_1234567890.123.jpg
@@ -81,7 +76,7 @@ def calculate_features(image_1_cv, image_2_cv, feature_number: int):
         nfeatures=feature_number,
         scaleFactor=1.2,
         nlevels=8,
-        edgeThreshold=15,
+        edgeThreshold=40,
         fastThreshold=7,
     )
     keypoints_1, descriptors_1 = orb.detectAndCompute(image_1_cv, None)
@@ -99,16 +94,16 @@ def calculate_matches(descriptors_1, descriptors_2):
     matches = [m[0] for m in knn]
     return knn, matches
 
-def clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_diff):
+def clear_matches(knn, keypoints_1, keypoints_2, matches, height: float, time_diff: float):
     points1, points2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
     to_remove: list[int] = []
     
-    shortest_dist = calc.minimum_pixel_diff(time_diff)[0]
-    print(shortest_dist)
+    shortest_dist = calc.minimum_pixel_diff(time_diff, height)[0]
+    #print(shortest_dist)
     
     for i, (pos1, pos2) in enumerate(zip(points1, points2)):
         pixel_distance = math.sqrt(pow(pos1[0] - pos2[0], 2) + pow(pos1[1] - pos2[1], 2))
-        print(pixel_distance, shortest_dist)
+        #print(pixel_distance, shortest_dist)
         if pixel_distance < shortest_dist:
             to_remove.append(i)
             
@@ -230,10 +225,17 @@ def run(
     gsdnapix: float | None = None,
     nfeatures: int = 4000,
     save_matches: str | None = None,
-    height: float = get_height_at(time)
+    height: float | None = None,
+    debug: bool = False
 ):
+    print("running exif on pictures: ", image_1, image_2)
+    time = get_time(image_1)
+
     if gsdnapix is None:
-        gsdnapix = get_gsdnapix()
+        gsdnapix = get_gsdnapix(time)
+
+    if height is None:
+        height = get_height_at(time)
 
     time_difference = get_time_difference(image_1, image_2)
     if time_difference <= 0:
@@ -245,9 +247,11 @@ def run(
     )
 
     knn, matches = calculate_matches(descriptors_1, descriptors_2)
-    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err1.jpg")
+    if debug:
+        save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err1.jpg")
     matches = clear_matches(knn, keypoints_1, keypoints_2, matches, height, time_difference)
-    save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err2.jpg")
+    if debug:
+        save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches, "err2.jpg")
     
     
     
@@ -268,39 +272,34 @@ def run(
     if inliers is None:
         raise ValueError("RANSAC failed (no inliers).")
 
-    inliers = inliers.ravel().astype(bool)
-    pts1_in = pts1[inliers].reshape(-1, 2)
-    pts2_in = pts2[inliers].reshape(-1, 2)
+    inlier_matches = [m for m, good in zip(matches, inliers.ravel()) if good]
+    
+    speeds: list[float] = []
+    for m in inlier_matches:
+        p1 = keypoints_1[m.queryIdx].pt
+        p2 = keypoints_2[m.trainIdx].pt
 
-    if pts1_in.shape[0] < 12:
-        raise ValueError(f"Too few inliers after RANSAC ({pts1_in.shape[0]}).")
+        speed = calc.get_speed(p1, p2, time, time_difference)
+        if speed >= calc.MIN_SPEED/1000 and speed <= 2*7.6 - calc.MIN_SPEED/1000:   # if bad speed caused by picture err dont append
+            speeds.append(speed)
+    
+    if len(speeds) == 0:
+        raise ValueError(f"Exif failed, output out of expected range")
 
-    # --- Choose a representative inlier pair (median displacement)
-    disp = np.linalg.norm(pts2_in - pts1_in, axis=1)
-    idx = int(np.argsort(disp)[len(disp) // 2])
+    speed_kmps, std = calc.do_statistik(speeds)
 
-    pos1 = tuple(map(float, pts1_in[idx]))
-    pos2 = tuple(map(float, pts2_in[idx]))
-
-    # Optional: still filter by expected km/s using simple GSD before calc_speed
-    # (prevents absurd pairs from slipping through if RANSAC is weak)
-    d_px = float(disp[idx])
-    d_km = d_px * gsdnapix / 100000.0
-    speed_gsd = d_km / time_difference
-    if not (6.0 <= speed_gsd <= 9.0):
-        raise ValueError(f"Inlier displacement implies {speed_gsd:.2f} km/s (out of expected range).")
-"""
-    # --- Final speed using your geometry model
-    speed_kmps = calc.calc_speed(pos1, pos2, time_difference)
-    return (speed_kmps,)
+    if (speed_kmps < 7 or speed_kmps > 8.5) and debug:
+        save_matches_image(image_1_cv, keypoints_1, image_2_cv, keypoints_2, inlier_matches, f"time={time:.00f}speed{speed_kmps:.03f}.jpg") 
+    print(f"image: {image_2}, speed: {speed_kmps:.03f} +- {std:.03f} km/s")
+    return speed_kmps, speeds
 
 
 def _cli():
     p = argparse.ArgumentParser()
     p.add_argument("image1")
     p.add_argument("image2")
-    p.add_argument("--gsd", type=float, default=12648.0, help="Ground sample distance (cm per pixel)")
-    p.add_argument("--nfeatures", type=int, default=1000)
+    p.add_argument("--gsd", type=float, default=None, help="Ground sample distance (cm per pixel)")
+    p.add_argument("--nfeatures", type=int, default=4000)
     p.add_argument("--save-matches", default=None, help="Write match image to this path (no GUI needed)")
     args = p.parse_args()
 
@@ -310,4 +309,3 @@ def _cli():
 
 if __name__ == "__main__":
     _cli()
-"""
