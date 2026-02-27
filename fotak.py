@@ -4,7 +4,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from typing import List
-from config import INTERVAL_S
+try:
+    from config import INTERVAL_S
+except:
+    INTERVAL_S = 10
 
 try:
     # This is what you said you're using
@@ -32,10 +35,6 @@ def _next_index(prefix: str, directory: Path) -> int:
             # Ignore weirdly named files
             pass
     return max_idx + 1
-
-
-# fotak.py
-from config import INTERVAL_S
 
 def take_three_photos(
     prefix: str = "atlas_photo",
